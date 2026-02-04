@@ -1,14 +1,14 @@
-name: RDP Windows 10 Gamer
+name: RDP Windows 10 Gamer (Intel Xeon)
 
 on:
   workflow_dispatch:
 
-# ====== CONFIGURAÇÃO DO PC (REFERÊNCIA TIPO JOYARK) ======
+# ====== CONFIGURAÇÃO DO PC (REFERÊNCIA CLOUD / XEON) ======
 env:
   PC_STORAGE: "1TB NVMe"
-  PC_RAM_OPTIONS: "12GB / 32GB DDR4"
-  PC_CPU: "Intel Core i7 / i9"
-  PC_GPU: "NVIDIA RTX"
+  PC_RAM_OPTIONS: "16GB / 32GB DDR4 ECC"
+  PC_CPU: "Intel Xeon (Datacenter Class)"
+  PC_GPU: "NVIDIA RTX / Tesla T4"
   PC_OS: "Windows 10 Pro 64-bit"
 
 jobs:
@@ -18,13 +18,13 @@ jobs:
     steps:
       - name: Mostrar Configuração do PC
         run: |
-          Write-Host "=== PC Gamer (Referência) ==="
+          Write-Host "=== PC Gamer Cloud (Intel Xeon) ==="
           Write-Host "Storage: $env:PC_STORAGE"
           Write-Host "RAM: $env:PC_RAM_OPTIONS"
           Write-Host "CPU: $env:PC_CPU"
           Write-Host "GPU: $env:PC_GPU"
           Write-Host "OS: $env:PC_OS"
-          Write-Host "============================"
+          Write-Host "================================="
 
       - name: Configurar RDP
         run: |
@@ -64,7 +64,7 @@ jobs:
         run: |
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
             --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
-            --hostname=win-gamer-$env:GITHUB_RUN_ID
+            --hostname=win-xeon-$env:GITHUB_RUN_ID
 
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
@@ -72,16 +72,16 @@ jobs:
       - name: Informações de Acesso
         run: |
           Write-Host ""
-          Write-Host "===== ACESSO RDP ====="
+          Write-Host "===== ACESSO RDP (XEON) ====="
           Write-Host "IP: $env:TAILSCALE_IP"
           Write-Host "Usuário: $env:RDP_USER"
           Write-Host "Senha: $env:RDP_PASS"
-          Write-Host "======================"
+          Write-Host "============================"
           Write-Host ""
 
       - name: Manter PC Ligado
         run: |
           while ($true) {
-            Write-Host "[$(Get-Date)] PC Gamer ativo via RDP"
+            Write-Host "[$(Get-Date)] Cloud PC Intel Xeon ativo"
             Start-Sleep -Seconds 300
           }
