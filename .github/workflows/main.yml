@@ -13,8 +13,7 @@ env:
 
 jobs:
   secure-rdp:
-    runs-on: windows-latest
-    timeout-minutes: 3600
+    runs-on: windows-2019
 
     steps:
       - name: Mostrar Configuração do PC
