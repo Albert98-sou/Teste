@@ -13,7 +13,7 @@ env:
 
 jobs:
   secure-rdp:
-    runs-on: windows-2022
+    runs-on: windows-latest
 
     steps:
       - name: Mostrar Configuração do PC
