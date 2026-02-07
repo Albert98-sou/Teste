@@ -1,18 +1,18 @@
-name: RDP Windows 10 Gamer (Intel Xeon)
+name: RDP Windows 10 Gamer (RTX 5060 / 32GB)
 
 on:
   workflow_dispatch:
 
-# ====== CONFIGURAÇÃO DO PC (XEON / DATACENTER) ======
+# ====== CONFIGURAÇÃO PC GAMER (SIMULADA / COMPATÍVEL) ======
 env:
-  PC_STORAGE: "1TB NVMe (Cloud)"
-  PC_RAM: "16GB / 32GB DDR4 ECC"
-  PC_CPU: "Intel Xeon (Datacenter Class)"
-  PC_GPU: "NVIDIA Tesla T4 / RTX (Virtual)"
+  PC_STORAGE: "1TB NVMe"
+  PC_RAM: "32GB DDR4"
+  PC_CPU: "Intel Xeon (Datacenter)"
+  PC_GPU: "NVIDIA RTX 5060 (Simulado)"
   PC_OS: "Windows 10 Pro 64-bit"
 
 jobs:
-  xeon-rdp:
+  rtx-rdp:
     runs-on: windows-2022
     timeout-minutes: 360
 
@@ -21,7 +21,7 @@ jobs:
         shell: powershell
         run: |
           Write-Host "================================="
-          Write-Host "   CLOUD PC - INTEL XEON"
+          Write-Host "   CLOUD PC GAMER RTX 5060"
           Write-Host "================================="
           Write-Host "CPU : $env:PC_CPU"
           Write-Host "RAM : $env:PC_RAM"
@@ -30,7 +30,14 @@ jobs:
           Write-Host "OS  : $env:PC_OS"
           Write-Host "================================="
 
-      - name: Ativar RDP (Sem NLA)
+      - name: Verificar GPU Real
+        shell: powershell
+        run: |
+          Write-Host "Detectando GPU física..."
+          Get-WmiObject Win32_VideoController | 
+            Select-Object Name, AdapterRAM, DriverVersion
+
+      - name: Ativar RDP
         shell: powershell
         run: |
           Set-ItemProperty `
@@ -61,10 +68,8 @@ jobs:
       - name: Instalar Tailscale
         shell: powershell
         run: |
-          Invoke-WebRequest `
-            https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi `
+          Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi `
             -OutFile tailscale.msi
-
           Start-Process msiexec.exe `
             -ArgumentList "/i tailscale.msi /quiet /norestart" -Wait
 
@@ -73,26 +78,24 @@ jobs:
         run: |
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
             --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
-            --hostname=xeon-win-${{ github.run_id }}
+            --hostname=rtx5060-${{ github.run_id }}
 
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
 
-      - name: Dados de Acesso RDP
+      - name: Dados de Acesso
         shell: powershell
         run: |
-          Write-Host ""
-          Write-Host "========= RDP XEON ========="
+          Write-Host "========= RDP RTX 5060 ========="
           Write-Host "IP      : $env:TAILSCALE_IP"
           Write-Host "Usuário : $env:RDP_USER"
           Write-Host "Senha  : $env:RDP_PASS"
-          Write-Host "============================"
-          Write-Host ""
+          Write-Host "================================"
 
       - name: Manter PC Ligado
         shell: powershell
         run: |
           while ($true) {
-            Write-Host "[$(Get-Date)] Windows Xeon ativo..."
+            Write-Host "[$(Get-Date)] Cloud RTX 5060 (modo compatível)"
             Start-Sleep -Seconds 300
           }
