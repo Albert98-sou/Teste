@@ -1,60 +1,63 @@
-name: RDP-NVIDIA-32GB-RAM
+name: RDP-WIN11-RTX5060-32GB
 
 on:
   workflow_dispatch:
 
 jobs:
   secure-rdp:
-    # Nota: Se for rodar em sua máquina, use: runs-on: self-hosted
-    runs-on: windows-latest 
+    # Lembre-se: O GitHub Actions não tem a RTX 5060 física. 
+    # Use 'runs-on: self-hosted' se quiser usar a placa do seu PC.
+    runs-on: windows-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Optimize Windows for 32GB RAM & GPU
+      - name: Maximize Performance (32GB RAM Target)
         run: |
-          # Ajusta o arquivo de paginação (Virtual Memory) para simular alta carga se necessário
+          # Configura memória virtual para compensar e chegar aos 32GB simulados
           wmic computersystem where name="%computername%" set AutomaticManagedPagefile=False
           wmic pagefileset where name="C:\\pagefile.sys" set InitialSize=32768,MaximumSize=32768
           
-          # Habilita modo de alta performance de energia
+          # Define plano de energia para Desempenho Máximo
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
 
-      - name: Configure RDP & Firewall
+      - name: Configure RDP & Security
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP-NVIDIA" dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall add rule name="RDP-RTX5060" dir=in action=allow protocol=TCP localport=3389
+          Restart-Service -Name TermService -Force
 
-      - name: Driver RTX 5060 & CUDA
+      - name: Install NVIDIA Drivers (RTX 5060 Support)
         run: |
-          Write-Host "Detectando RTX 5060..."
-          # Link para drivers compatíveis com a série 50 (DCH)
+          Write-Host "Baixando drivers NVIDIA para RTX 5060..."
           $driverUrl = "https://us.download.nvidia.com/Windows/551.61/551.61-desktop-win10-win11-64bit-international-dch-whql.exe"
-          Invoke-WebRequest -Uri $driverUrl -OutFile "nvidia_driver.exe"
-          Start-Process -FilePath "nvidia_driver.exe" -ArgumentList "/s", "/noreboot" -Wait
+          Invoke-WebRequest -Uri $driverUrl -OutFile "nvidia.exe"
+          # Instalação silenciosa
+          Start-Process -FilePath "nvidia.exe" -ArgumentList "/s", "/noreboot" -Wait
 
-      - name: Create Admin User
+      - name: Create RDP Admin
         run: |
-          $password = "Rtx5060_32GB_Setup!"
+          $password = "NvidiaRTX5060_Power!"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "NVIDIA_Admin" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "NVIDIA_Admin"
+          New-LocalUser -Name "RTX_User" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RTX_User"
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
 
-      - name: Setup Tailscale Connection
+      - name: Connect Tailscale Network
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           Invoke-WebRequest -Uri $tsUrl -OutFile "ts.msi"
           Start-Process msiexec.exe -ArgumentList "/i", "ts.msi", "/quiet" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win11-rtx5060-32gb
+          # O hostname aparecerá no seu painel Tailscale como 'win11-rtx-32gb'
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win11-rtx-32gb
 
-      - name: Verification & Loop
+      - name: System Status & Keep Alive
         run: |
           $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           Write-Host "`n=========================================="
-          Write-Host "SISTEMA PRONTO: Windows 11 + RTX 5060"
-          Write-Host "RAM CONFIGURADA: 32GB (Target)"
-          Write-Host "IP: $tsIP"
-          Write-Host "User: NVIDIA_Admin | Senha: $env:RDP_PASS"
+          Write-Host "NAME: WIN11-RTX5060-PRO"
+          Write-Host "RAM: 32GB CONFIGURADA"
+          Write-Host "IP PARA CONEXÃO: $tsIP"
+          Write-Host "USER: RTX_User | PASS: $env:RDP_PASS"
           Write-Host "==========================================`n"
           while ($true) { Start-Sleep -Seconds 300 }
