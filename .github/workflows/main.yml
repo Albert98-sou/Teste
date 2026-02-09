@@ -5,7 +5,9 @@ on:
 
 jobs:
   secure-rdp:
-    runs-on: self-hosted
+    runs-on:
+      
+      - 
       - 
     timeout-minutes: 3600
 
