@@ -1,81 +1,44 @@
-name: RDP-WIN11-RTX5060-32GB-FIXED
+name: RDP-RAPIDO-WIN11
 
 on:
   workflow_dispatch:
 
 jobs:
   secure-rdp:
-    runs-on:
-      
-      - 
-      - 
-    timeout-minutes: 3600
+    runs-on: windows-latest
+    timeout-minutes: 60 # Reduzi para não gastar seus minutos à toa
 
     steps:
-      - name: Optimize System (32GB RAM Target & High Perf)
+      - name: Configure RDP & User
         shell: powershell
         run: |
-          # Substituindo o WMIC por comandos CIM nativos para gerenciar o Pagefile (Memória Virtual)
-          $ComputerSystem = Get-CimInstance Win32_ComputerSystem
-          $ComputerSystem | Set-CimInstance -Property @{AutomaticManagedPagefile = $False}
-          
-          # Tenta criar ou atualizar o arquivo de paginação para simular os 32GB
-          $PageFile = Get-CimInstance Win32_PageFileSetting | Where-Object {$_.Name -eq "C:\pagefile.sys"}
-          if ($null -eq $PageFile) {
-              New-CimInstance -ClassName Win32_PageFileSetting -Property @{Name="C:\pagefile.sys"; InitialSize=32768; MaximumSize=32768}
-          } else {
-              $PageFile | Set-CimInstance -Property @{InitialSize=32768; MaximumSize=32768}
-          }
-
-          # Ajusta plano de energia para Desempenho Máximo
-          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-
-      - name: Configure RDP & Firewall (Fixed)
-        shell: powershell
-        run: |
-          # Habilita RDP
+          # Habilita RDP e Firewall rápido
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          New-NetFirewallRule -DisplayName "RDP-Fast" -Direction Inbound -LocalPort 3389 -Protocol TCP -Action Allow
           
-          # Firewall usando comando moderno do PowerShell
-          if (Get-NetFirewallRule -DisplayName "RDP-RTX5060" -ErrorAction SilentlyContinue) {
-              Remove-NetFirewallRule -DisplayName "RDP-RTX5060"
-          }
-          New-NetFirewallRule -DisplayName "RDP-RTX5060" -Direction Inbound -LocalPort 3389 -Protocol TCP -Action Allow
-          
-          Restart-Service -Name TermService -Force
-
-      - name: Install NVIDIA RTX Drivers
-        shell: powershell
-        run: |
-          Write-Host "Baixando drivers para RTX 5060..."
-          $driverUrl = "https://us.download.nvidia.com/Windows/551.61/551.61-desktop-win10-win11-64bit-international-dch-whql.exe"
-          Invoke-WebRequest -Uri $driverUrl -OutFile "nvidia.exe"
-          Start-Process -FilePath "nvidia.exe" -ArgumentList "/s", "/noreboot" -Wait
-
-      - name: Create RDP Admin
-        shell: powershell
-        run: |
-          $password = "NvidiaRTX5060_Power!"
+          # Cria usuário RTX_Admin
+          $password = "NvidiaRTX5060!"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          $user = New-LocalUser -Name "RTX_User" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Administrators" -Member "RTX_User" -ErrorAction SilentlyContinue
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+          New-LocalUser -Name "RTX_Admin" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RTX_Admin"
+          echo "PASS=$password" >> $env:GITHUB_ENV
 
-      - name: Connect Tailscale
+      - name: Setup Tailscale
         shell: powershell
         run: |
+          # Instalação rápida do Tailscale
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile "ts.msi"
-          Start-Process msiexec.exe -ArgumentList "/i", "ts.msi", "/quiet" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win11-rtx-32gb
+          Start-Process msiexec.exe -ArgumentList "/i", "ts.msi", "/quiet", "/norestart" -Wait
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win11-rtx-fast
 
-      - name: Success & Keep Alive
+      - name: Final Info
         shell: powershell
         run: |
           $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "=========================================="
-          Write-Host "SISTEMA: Win11 + RTX 5060 + 32GB RAM"
-          Write-Host "CONECTAR EM: $tsIP"
-          Write-Host "USER: RTX_User | PASS: $env:RDP_PASS"
-          Write-Host "=========================================="
+          Write-Host "=== CONECTE AGORA ==="
+          Write-Host "IP: $tsIP"
+          Write-Host "User: RTX_Admin"
+          Write-Host "Pass: NvidiaRTX5060!"
+          Write-Host "====================="
           while ($true) { Start-Sleep -Seconds 300 }
