@@ -1,61 +1,64 @@
-name: RDP-FC26-WIN10
+name: RDP-FC26-FIXED
 
 on:
   workflow_dispatch:
 
 jobs:
-  gaming-setup:
-    # windows-2019 é o equivalente ao Windows 10 no GitHub Actions
-    runs-on: windows-2019
-    timeout-minutes: 360 # Aumentado para 6 horas (limite do GitHub)
+  gaming-rig:
+    runs-on: windows-latest # MUDANÇA CRUCIAL: Usa Server 2022 (tem Winget nativo)
+    timeout-minutes: 360
 
     steps:
-      - name: Otimizar Windows para Performance
+      - name: 1. Configurar Acesso e Performance
         shell: powershell
         run: |
-          # Habilita RDP e desativa restrições de autenticação
+          # Configura RDP para aceitar conexões
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           New-NetFirewallRule -DisplayName "RDP-Fast" -Direction Inbound -LocalPort 3389 -Protocol TCP -Action Allow
           
-          # Cria usuário Gamer_Admin
+          # Cria usuário Admin
           $password = "NvidiaRTX2026!"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "Gamer_Admin" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "Gamer_Admin"
 
-      - name: Instalar Dependências (NVIDIA, DirectX, EA App)
+      - name: 2. Instalar Dependências de Jogos (EA & DirectX)
         shell: powershell
         run: |
-          # Instala o WinGet (caso não esteja atualizado)
-          $ProgressPreference = 'SilentlyContinue'
+          # Aceita termos de fonte do Winget silenciosamente
+          winget settings --enable InstallerHashOverride
           
-          # Instala o EA App para rodar o FC 26
-          winget install --id ElectronicArts.EADesktop --silent --accept-package-agreements --accept-source-agreements
+          Write-Host "Instalando EA Desktop App..."
+          winget install --id ElectronicArts.EADesktop --silent --accept-package-agreements --accept-source-agreements --force
           
-          # Instala DirectX e Visual C++ (Essencial para o motor Frostbite)
-          winget install --id Microsoft.DirectX --silent --accept-package-agreements
-          winget install --id Microsoft.VCRedist.2015+.x64 --silent --accept-package-agreements
-          
-          # Tenta instalar o Driver NVIDIA (Nota: Pode falhar se o Runner não detectar hardware NVIDIA)
-          winget install --id Nvidia.GeForceExperience --silent --accept-package-agreements
+          Write-Host "Instalando DirectX e Visual C++..."
+          winget install --id Microsoft.DirectX --silent --accept-package-agreements --force
+          winget install --id Microsoft.VCRedist.2015+.x64 --silent --accept-package-agreements --force
 
-      - name: Configurar Tailscale (VPN)
+      - name: 3. Tentar Drivers NVIDIA (Modo Seguro)
+        shell: powershell
+        # continue-on-error: true impede que o script pare se não detectar GPU física
+        continue-on-error: true 
+        run: |
+          Write-Host "Tentando instalar GeForce Experience..."
+          winget install --id Nvidia.GeForceExperience --silent --accept-package-agreements --force
+
+      - name: 4. Conectar VPN (Tailscale)
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile "ts.msi"
-          Start-Process msiexec.exe -ArgumentList "/i", "ts.msi", "/quiet", "/norestart" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win10-fc26-runner
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts-setup.exe"
+          Start-Process -FilePath "ts-setup.exe" -ArgumentList "/quiet", "/norestart" -Wait
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win-fc26-rig
 
-      - name: Informações de Acesso
+      - name: 5. Dados de Conexão
         shell: powershell
         run: |
           $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           Write-Host "=========================================="
-          Write-Host "MÁQUINA PRONTA PARA FC 26"
-          Write-Host "IP PARA RDP: $tsIP"
-          Write-Host "Usuário: Gamer_Admin"
-          Write-Host "Senha: NvidiaRTX2026!"
+          Write-Host "   SERVIDOR ONLINE - CONECTE AGORA"
+          Write-Host "   IP Tailscale: $tsIP"
+          Write-Host "   Usuário: Gamer_Admin"
+          Write-Host "   Senha: NvidiaRTX2026!"
           Write-Host "=========================================="
-          # Mantém o workflow vivo
           while ($true) { Start-Sleep -Seconds 300 }
