@@ -1,44 +1,61 @@
-name: RDP-RAPIDO-WIN11
+name: RDP-FC26-WIN10
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
-    runs-on: windows-latest
-    timeout-minutes: 60 # Reduzi para não gastar seus minutos à toa
+  gaming-setup:
+    # windows-2019 é o equivalente ao Windows 10 no GitHub Actions
+    runs-on: windows-2019
+    timeout-minutes: 360 # Aumentado para 6 horas (limite do GitHub)
 
     steps:
-      - name: Configure RDP & User
+      - name: Otimizar Windows para Performance
         shell: powershell
         run: |
-          # Habilita RDP e Firewall rápido
+          # Habilita RDP e desativa restrições de autenticação
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           New-NetFirewallRule -DisplayName "RDP-Fast" -Direction Inbound -LocalPort 3389 -Protocol TCP -Action Allow
           
-          # Cria usuário RTX_Admin
-          $password = "NvidiaRTX5060!"
+          # Cria usuário Gamer_Admin
+          $password = "NvidiaRTX2026!"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "RTX_Admin" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "RTX_Admin"
-          echo "PASS=$password" >> $env:GITHUB_ENV
+          New-LocalUser -Name "Gamer_Admin" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "Gamer_Admin"
 
-      - name: Setup Tailscale
+      - name: Instalar Dependências (NVIDIA, DirectX, EA App)
         shell: powershell
         run: |
-          # Instalação rápida do Tailscale
+          # Instala o WinGet (caso não esteja atualizado)
+          $ProgressPreference = 'SilentlyContinue'
+          
+          # Instala o EA App para rodar o FC 26
+          winget install --id ElectronicArts.EADesktop --silent --accept-package-agreements --accept-source-agreements
+          
+          # Instala DirectX e Visual C++ (Essencial para o motor Frostbite)
+          winget install --id Microsoft.DirectX --silent --accept-package-agreements
+          winget install --id Microsoft.VCRedist.2015+.x64 --silent --accept-package-agreements
+          
+          # Tenta instalar o Driver NVIDIA (Nota: Pode falhar se o Runner não detectar hardware NVIDIA)
+          winget install --id Nvidia.GeForceExperience --silent --accept-package-agreements
+
+      - name: Configurar Tailscale (VPN)
+        shell: powershell
+        run: |
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile "ts.msi"
           Start-Process msiexec.exe -ArgumentList "/i", "ts.msi", "/quiet", "/norestart" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win11-rtx-fast
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win10-fc26-runner
 
-      - name: Final Info
+      - name: Informações de Acesso
         shell: powershell
         run: |
           $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "=== CONECTE AGORA ==="
-          Write-Host "IP: $tsIP"
-          Write-Host "User: RTX_Admin"
-          Write-Host "Pass: NvidiaRTX5060!"
-          Write-Host "====================="
+          Write-Host "=========================================="
+          Write-Host "MÁQUINA PRONTA PARA FC 26"
+          Write-Host "IP PARA RDP: $tsIP"
+          Write-Host "Usuário: Gamer_Admin"
+          Write-Host "Senha: NvidiaRTX2026!"
+          Write-Host "=========================================="
+          # Mantém o workflow vivo
           while ($true) { Start-Sleep -Seconds 300 }
