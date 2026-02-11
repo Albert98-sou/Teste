@@ -1,4 +1,4 @@
-name: Gamer-PC-32GB-Virtual
+name: Gamer-PC-32GB-Full
 
 on:
   workflow_dispatch:
@@ -10,55 +10,102 @@ jobs:
 
     steps:
 
-      - name: Install Programs
+      # =============================
+      # INSTALL PROGRAMS
+      # =============================
+      - name: Install Chocolatey Apps
         run: |
           choco install tailscale -y
           choco install steam -y
         shell: powershell
 
-      - name: Create 32GB Virtual RAM (Pagefile)
+      # =============================
+      # CONFIGURE 32GB PAGEFILE
+      # =============================
+      - name: Configure 32GB Virtual RAM
         run: |
-          wmic pagefileset where name="C:\\pagefile.sys" set InitialSize=32768,MaximumSize=32768
+          $sys = Get-WmiObject -Class Win32_ComputerSystem
+          $sys.AutomaticManagedPagefile = $false
+          $sys.Put()
+
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" `
+            -Name "PagingFiles" `
+            -Value "C:\pagefile.sys 32768 32768"
+
+          Write-Host "Pagefile configurado para 32GB"
         shell: powershell
 
+      # =============================
+      # CREATE 512GB VIRTUAL DISK
+      # =============================
       - name: Create 512GB Virtual Disk
         run: |
-          $VHDPath = "C:\gamer512.vhd"
+          Import-Module Hyper-V
+
+          $VHDPath = "C:\gamer512.vhdx"
+
           New-VHD -Path $VHDPath -SizeBytes 512GB -Dynamic
           Mount-VHD -Path $VHDPath
-          Initialize-Disk -Number 1 -PartitionStyle GPT
-          New-Partition -DiskNumber 1 -UseMaximumSize -AssignDriveLetter | Format-Volume -FileSystem NTFS -Confirm:$false
+
+          $disk = Get-Disk | Where-Object PartitionStyle -Eq "RAW"
+          Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+
+          New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter | 
+          Format-Volume -FileSystem NTFS -Confirm:$false
+
+          Write-Host "Disco virtual 512GB criado"
         shell: powershell
 
+      # =============================
+      # START TAILSCALE
+      # =============================
       - name: Start Tailscale
         run: |
           Start-Service Tailscale
           tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
+          tailscale ip -4
         shell: powershell
 
+      # =============================
+      # ENABLE RDP
+      # =============================
       - name: Enable RDP
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name "fDenyTSConnections" -Value 0
+
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+          Write-Host "RDP ativado"
         shell: powershell
 
+      # =============================
+      # CREATE GAMER USER
+      # =============================
       - name: Create Gamer User
         run: |
           net user Gamer32 P@ssGamer32 /add
           net localgroup administrators Gamer32 /add
         shell: powershell
 
-      - name: Show Info
+      # =============================
+      # SHOW INFO
+      # =============================
+      - name: Show Access Info
         run: |
-          echo "========== PC GAMER READY =========="
-          echo "User: Gamer32"
-          echo "Pass: P@ssGamer32"
-          echo "Tailscale IP:"
+          echo "================================="
+          echo "PC GAMER VIRTUAL PRONTO"
+          echo "Usuario: Gamer32"
+          echo "Senha: P@ssGamer32"
+          echo "IP Tailscale:"
           tailscale ip -4
-          echo "====================================="
+          echo "================================="
         shell: powershell
 
-      - name: Keep Alive
+      # =============================
+      # KEEP ALIVE
+      # =============================
+      - name: Keep Runner Alive
         run: |
           ping 127.0.0.1 -t
         shell: powershell
