@@ -1,64 +1,64 @@
-name: RDP-FC26-FIXED
+name: Gamer-PC-32GB-Virtual
 
 on:
   workflow_dispatch:
 
 jobs:
-  gaming-rig:
-    runs-on: windows-latest # MUDANÇA CRUCIAL: Usa Server 2022 (tem Winget nativo)
+  gamer:
+    runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-      - name: 1. Configurar Acesso e Performance
-        shell: powershell
-        run: |
-          # Configura RDP para aceitar conexões
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          New-NetFirewallRule -DisplayName "RDP-Fast" -Direction Inbound -LocalPort 3389 -Protocol TCP -Action Allow
-          
-          # Cria usuário Admin
-          $password = "NvidiaRTX2026!"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "Gamer_Admin" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "Gamer_Admin"
 
-      - name: 2. Instalar Dependências de Jogos (EA & DirectX)
-        shell: powershell
+      - name: Install Programs
         run: |
-          # Aceita termos de fonte do Winget silenciosamente
-          winget settings --enable InstallerHashOverride
-          
-          Write-Host "Instalando EA Desktop App..."
-          winget install --id ElectronicArts.EADesktop --silent --accept-package-agreements --accept-source-agreements --force
-          
-          Write-Host "Instalando DirectX e Visual C++..."
-          winget install --id Microsoft.DirectX --silent --accept-package-agreements --force
-          winget install --id Microsoft.VCRedist.2015+.x64 --silent --accept-package-agreements --force
+          choco install tailscale -y
+          choco install steam -y
+        shell: powershell
 
-      - name: 3. Tentar Drivers NVIDIA (Modo Seguro)
-        shell: powershell
-        # continue-on-error: true impede que o script pare se não detectar GPU física
-        continue-on-error: true 
+      - name: Create 32GB Virtual RAM (Pagefile)
         run: |
-          Write-Host "Tentando instalar GeForce Experience..."
-          winget install --id Nvidia.GeForceExperience --silent --accept-package-agreements --force
+          wmic pagefileset where name="C:\\pagefile.sys" set InitialSize=32768,MaximumSize=32768
+        shell: powershell
 
-      - name: 4. Conectar VPN (Tailscale)
-        shell: powershell
+      - name: Create 512GB Virtual Disk
         run: |
-          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts-setup.exe"
-          Start-Process -FilePath "ts-setup.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=win-fc26-rig
+          $VHDPath = "C:\gamer512.vhd"
+          New-VHD -Path $VHDPath -SizeBytes 512GB -Dynamic
+          Mount-VHD -Path $VHDPath
+          Initialize-Disk -Number 1 -PartitionStyle GPT
+          New-Partition -DiskNumber 1 -UseMaximumSize -AssignDriveLetter | Format-Volume -FileSystem NTFS -Confirm:$false
+        shell: powershell
 
-      - name: 5. Dados de Conexão
-        shell: powershell
+      - name: Start Tailscale
         run: |
-          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "=========================================="
-          Write-Host "   SERVIDOR ONLINE - CONECTE AGORA"
-          Write-Host "   IP Tailscale: $tsIP"
-          Write-Host "   Usuário: Gamer_Admin"
-          Write-Host "   Senha: NvidiaRTX2026!"
-          Write-Host "=========================================="
-          while ($true) { Start-Sleep -Seconds 300 }
+          Start-Service Tailscale
+          tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
+        shell: powershell
+
+      - name: Enable RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        shell: powershell
+
+      - name: Create Gamer User
+        run: |
+          net user Gamer32 P@ssGamer32 /add
+          net localgroup administrators Gamer32 /add
+        shell: powershell
+
+      - name: Show Info
+        run: |
+          echo "========== PC GAMER READY =========="
+          echo "User: Gamer32"
+          echo "Pass: P@ssGamer32"
+          echo "Tailscale IP:"
+          tailscale ip -4
+          echo "====================================="
+        shell: powershell
+
+      - name: Keep Alive
+        run: |
+          ping 127.0.0.1 -t
+        shell: powershell
