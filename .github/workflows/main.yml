@@ -1,124 +1,113 @@
-name: Workstation-UE5-RTX4060
+name: RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  ue5-dev-station:
+  secure-rdp:
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 3600
 
     steps:
-      # =============================
-      # 1. INSTALL ESSENTIALS & EPIC
-      # =============================
-      - name: Install Chocolatey Apps (Epic, Steam, Tailscale)
+      - name: Configure Core RDP Settings
         run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          choco install tailscale -y
-          choco install epicgameslauncher -y
-          choco install directx -y
-          choco install vcredist140 -y
-        shell: powershell
-
-      # =============================
-      # 2. CONFIGURE MEMORY (32GB)
-      # =============================
-      - name: Configure 32GB Virtual RAM (Pagefile)
-        run: |
-          $sys = Get-WmiObject -Class Win32_ComputerSystem
-          $sys.AutomaticManagedPagefile = $false
-          $sys.Put()
-          
-          # Tenta configurar, mas em runners gratuitos o disco C: pode encher
-          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" `
-            -Name "PagingFiles" `
-            -Value "C:\pagefile.sys 32768 32768"
-
-          Write-Host "Configuração de Memória Virtual aplicada."
-        shell: powershell
-
-      # =============================
-      # 3. SETUP VIRTUAL DISK
-      # =============================
-      - name: Create Virtual Disk for UE5 Projects
-        run: |
-          Import-Module Hyper-V
-          
-          # Nota: Em runners gratuitos, 512GB falhará. Ajuste para self-hosted se necessário.
-          # O script tentará criar o máximo possível se falhar o tamanho fixo.
-          $VHDPath = "C:\UE5_Projects.vhdx"
-          
-          # Criação do disco (Dinâmico para economizar espaço inicial)
-          New-VHD -Path $VHDPath -SizeBytes 512GB -Dynamic
-          Mount-VHD -Path $VHDPath
-          
-          $disk = Get-Disk | Where-Object PartitionStyle -Eq "RAW"
-          Initialize-Disk -Number $disk.Number -PartitionStyle GPT
-          
-          New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter | 
-          Format-Volume -FileSystem NTFS -NewFileSystemLabel "UE5_Data" -Confirm:$false
-          
-          Write-Host "Disco de Projetos UE5 Criado e Montado."
-        shell: powershell
-
-      # =============================
-      # 4. START TAILSCALE VPN
-      # =============================
-      - name: Start Tailscale
-        run: |
-          Start-Service Tailscale
-          # Certifique-se de ter o segredo TAILSCALE_AUTHKEY configurado no GitHub
-          tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
-          tailscale ip -4
-        shell: powershell
-
-      # =============================
-      # 5. ENABLE REMOTE DESKTOP
-      # =============================
-      - name: Enable RDP
-        run: |
+          # Enable Remote Desktop and disable Network Level Authentication (if needed)
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-            -Name "fDenyTSConnections" -Value 0
+                             -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "SecurityLayer" -Value 0 -Force
+
+          # Remove any existing rule with the same name to avoid duplication
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
           
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          # For testing, allow any incoming connection on port 3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale" `
+            dir=in action=allow protocol=TCP localport=3389
+
+          # (Optional) Restart the Remote Desktop service to ensure changes take effect
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Secure Password
+        run: |
+          Add-Type -AssemblyName System.Security
+          $charSet = @{
+              Upper   = [char[]](65..90)      # A-Z
+              Lower   = [char[]](97..122)     # a-z
+              Number  = [char[]](48..57)      # 0-9
+              Special = ([char[]](33..47) + [char[]](58..64) +
+                         [char[]](91..96) + [char[]](123..126)) # Special characters
+          }
+          $rawPassword = @()
+          $rawPassword += $charSet.Upper | Get-Random -Count 4
+          $rawPassword += $charSet.Lower | Get-Random -Count 4
+          $rawPassword += $charSet.Number | Get-Random -Count 4
+          $rawPassword += $charSet.Special | Get-Random -Count 4
+          $password = -join ($rawPassword | Sort-Object { Get-Random })
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           
-          Write-Host "Acesso Remoto RDP Liberado."
-        shell: powershell
+          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
+          
+          if (-not (Get-LocalUser -Name "RDP")) {
+              Write-Error "User creation failed"
+              exit 1
+          }
 
-      # =============================
-      # 6. CREATE USER (ADMIN)
-      # =============================
-      - name: Create UE5 Dev User
+      - name: Install Tailscale
         run: |
-          net user DevUE5 P@ssRTX4060! /add
-          net localgroup administrators DevUE5 /add
-          # Configura para a senha não expirar
-          WMIC USERACCOUNT WHERE Name='DevUE5' SET PasswordExpires=FALSE
-        shell: powershell
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
 
-      # =============================
-      # 7. SHOW CONNECTION INFO
-      # =============================
-      - name: Show Access Info
+      - name: Establish Tailscale Connection
         run: |
-          echo "========================================="
-          echo "   WORKSTATION UE5 / EPIC GAMES READY    "
-          echo "========================================="
-          echo "Usuario: DevUE5"
-          echo "Senha:   P@ssRTX4060!"
-          echo "-----------------------------------------"
-          echo "IP para conectar (Tailscale):"
-          tailscale ip -4
-          echo "========================================="
-        shell: powershell
+          # Bring up Tailscale with the provided auth key and set a unique hostname
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          
+          # Wait for Tailscale to assign an IP
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
+          }
+          
+          if (-not $tsIP) {
+              Write-Error "Tailscale IP not assigned. Exiting."
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+      
+      - name: Verify RDP Accessibility
+        run: |
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          
+          # Test connectivity using Test-NetConnection against the Tailscale IP on port 3389
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "TCP connection to RDP port 3389 failed"
+              exit 1
+          }
+          Write-Host "TCP connectivity successful!"
 
-      # =============================
-      # 8. KEEP ALIVE LOOP
-      # =============================
-      - name: Keep Runner Alive
+      - name: Maintain Connection
         run: |
-          Write-Host "Máquina ativa. Conecte via RDP agora."
-          # Loop infinito de ping para manter a sessão ativa até o timeout (6h)
-          ping 127.0.0.1 -t
-        shell: powershell
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: RDP"
+          Write-Host "Password: $(echo $env:RDP_CREDS)"
+          Write-Host "==================`n"
+          
+          # Keep runner active indefinitely (or until manually cancelled)
+          while ($true) {
+              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              Start-Sleep -Seconds 300
+          }
