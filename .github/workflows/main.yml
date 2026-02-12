@@ -1,46 +1,55 @@
-name: Unreal Engine 5 Build
+name: Deploy-Azure-GPU-Server
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: self-hosted
+  deploy:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set Unreal Engine Path
-        run: |
-          echo "UE_PATH=C:\Program Files\Epic Games\UE_5.3" >> $env:GITHUB_ENV
-        shell: powershell
-
-      - name: Generate Project Files
-        run: |
-          & "$env:UE_PATH\Engine\Build\BatchFiles\GenerateProjectFiles.bat" `
-          -project="$env:GITHUB_WORKSPACE\MyGame.uproject" `
-          -game -engine
-        shell: powershell
-
-      - name: Build Project
-        run: |
-          & "$env:UE_PATH\Engine\Build\BatchFiles\Build.bat" `
-          MyGameEditor Win64 Development `
-          -project="$env:GITHUB_WORKSPACE\MyGame.uproject"
-        shell: powershell
-
-      - name: Package Game
-        run: |
-          & "$env:UE_PATH\Engine\Build\BatchFiles\RunUAT.bat" BuildCookRun `
-          -project="$env:GITHUB_WORKSPACE\MyGame.uproject" `
-          -noP4 -platform=Win64 -clientconfig=Shipping `
-          -cook -allmaps -build -stage -pak -archive `
-          -archivedirectory="$env:GITHUB_WORKSPACE\Build"
-        shell: powershell
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
+      # =============================
+      # LOGIN AZURE
+      # =============================
+      - name: Login to Azure
+        uses: azure/login@v2
         with:
-          name: UnrealBuild
-          path: Build
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      # =============================
+      # CREATE RESOURCE GROUP
+      # =============================
+      - name: Create Resource Group
+        run: |
+          az group create \
+            --name UnrealGPUGroup \
+            --location eastus
+
+      # =============================
+      # CREATE GPU VM
+      # =============================
+      - name: Create GPU VM
+        run: |
+          az vm create \
+            --resource-group UnrealGPUGroup \
+            --name UnrealGPUServer \
+            --image Win2022Datacenter \
+            --size Standard_NVadsA10_v5 \
+            --admin-username UnrealAdmin \
+            --admin-password P@ssUnreal123! \
+            --public-ip-sku Standard \
+            --authentication-type password
+
+      # =============================
+      # INSTALL NVIDIA DRIVER EXTENSION
+      # =============================
+      - name: Install NVIDIA Drivers
+        run: |
+          az vm extension set \
+            --resource-group UnrealGPUGroup \
+            --vm-name UnrealGPUServer \
+            --name NvidiaGpuDriverWindows \
+            --publisher Microsoft.HpcCompute
