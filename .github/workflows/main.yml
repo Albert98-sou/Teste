@@ -1,4 +1,4 @@
-name: Deploy-Azure-GPU-Server
+name: Deploy-Vast-GPU-Windows
 
 on:
   workflow_dispatch:
@@ -10,65 +10,39 @@ jobs:
     steps:
 
       # =============================
-      # LOGIN AZURE
+      # INSTALL VAST CLI
       # =============================
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Install Vast CLI
+        run: |
+          pip install vastai
 
       # =============================
-      # CREATE RESOURCE GROUP
+      # LOGIN VAST
       # =============================
-      - name: Create Resource Group
+      - name: Set API Key
         run: |
-          az group create \
-            --name UnrealGPUGroup \
-            --location eastus
+          vastai set api-key ${{ secrets.VAST_API_KEY }}
 
       # =============================
-      # CREATE GPU VM (A10 - 24GB VRAM)
+      # SEARCH RTX 4090
       # =============================
-      - name: Create GPU VM
+      - name: Search RTX 4090
         run: |
-          az vm create \
-            --resource-group UnrealGPUGroup \
-            --name UnrealGPUServer \
-            --image Win2022Datacenter \
-            --size Standard_NVadsA10_v5 \
-            --admin-username UnrealAdmin \
-            --generate-ssh-keys false \
-            --authentication-type password \
-            --admin-password $(openssl rand -base64 16) \
-            --public-ip-sku Standard
+          vastai search offers 'gpu_name=RTX_4090'
 
       # =============================
-      # OPEN RDP PORT
+      # CREATE WINDOWS INSTANCE
       # =============================
-      - name: Open RDP Port
+      - name: Create Windows VM
         run: |
-          az vm open-port \
-            --resource-group UnrealGPUGroup \
-            --name UnrealGPUServer \
-            --port 3389
+          vastai create instance <OFFER_ID> \
+            --image vastai/windows11 \
+            --disk 100 \
+            --onstart-cmd "powershell -Command \"Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'\""
 
       # =============================
-      # INSTALL NVIDIA GPU DRIVER
+      # SHOW INSTANCES
       # =============================
-      - name: Install NVIDIA Drivers
+      - name: Show Instance Info
         run: |
-          az vm extension set \
-            --resource-group UnrealGPUGroup \
-            --vm-name UnrealGPUServer \
-            --name NvidiaGpuDriverWindows \
-            --publisher Microsoft.HpcCompute
-
-      # =============================
-      # SHOW PUBLIC IP
-      # =============================
-      - name: Show Public IP
-        run: |
-          az vm show \
-            --resource-group UnrealGPUGroup \
-            --name UnrealGPUServer \
-            -d --query publicIps -o tsv
+          vastai show instances
