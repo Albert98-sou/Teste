@@ -9,40 +9,26 @@ jobs:
 
     steps:
 
-      # =============================
-      # INSTALL VAST CLI
-      # =============================
       - name: Install Vast CLI
         run: |
           pip install vastai
 
-      # =============================
-      # LOGIN VAST
-      # =============================
       - name: Set API Key
         run: |
           vastai set api-key ${{ secrets.VAST_API_KEY }}
 
-      # =============================
-      # SEARCH RTX 4090
-      # =============================
-      - name: Search RTX 4090
+      - name: Get Cheapest RTX 4090 Offer
+        id: get_offer
         run: |
-          vastai search offers 'gpu_name=RTX_4090'
+          OFFER=$(vastai search offers "gpu_name=RTX_4090 rentable=True" --raw | jq -r '.[0].id')
+          echo "OFFER_ID=$OFFER" >> $GITHUB_ENV
 
-      # =============================
-      # CREATE WINDOWS INSTANCE
-      # =============================
-      - name: Create Windows VM
+      - name: Create Windows Instance
         run: |
-          vastai create instance <OFFER_ID> \
+          vastai create instance $OFFER_ID \
             --image vastai/windows11 \
-            --disk 100 \
-            --onstart-cmd "powershell -Command \"Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'\""
+            --disk 100
 
-      # =============================
-      # SHOW INSTANCES
-      # =============================
-      - name: Show Instance Info
+      - name: Show Instances
         run: |
           vastai show instances
