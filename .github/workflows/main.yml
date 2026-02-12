@@ -1,4 +1,4 @@
-name: Deploy-Vast-GPU-Windows
+name: UE5-16CPU-RTX
 
 on:
   workflow_dispatch:
@@ -8,27 +8,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Install Vast CLI
+      - name: Install Dependencies
         run: |
+          sudo apt update
+          sudo apt install -y jq
           pip install vastai
 
       - name: Set API Key
         run: |
           vastai set api-key ${{ secrets.VAST_API_KEY }}
 
-      - name: Get Cheapest RTX 4090 Offer
-        id: get_offer
+      - name: Get RTX 4090 + 16 CPU
         run: |
-          OFFER=$(vastai search offers "gpu_name=RTX_4090 rentable=True" --raw | jq -r '.[0].id')
+          OFFER=$(vastai search offers "gpu_name=RTX_4090 cpu_cores>=16 rentable=True verified=True" --raw | jq -r 'sort_by(.dph_total) | .[0].id')
           echo "OFFER_ID=$OFFER" >> $GITHUB_ENV
 
-      - name: Create Windows Instance
+      - name: Create Windows 11 RTX Machine
         run: |
           vastai create instance $OFFER_ID \
             --image vastai/windows11 \
-            --disk 100
+            --disk 200
 
-      - name: Show Instances
+      - name: Show Instance Info
         run: |
           vastai show instances
