@@ -1,34 +1,124 @@
-name: UE5-16CPU-RTX
+name: Workstation-UE5-RTX4060
 
 on:
   workflow_dispatch:
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+  ue5-dev-station:
+    runs-on: windows-latest
+    timeout-minutes: 360
 
     steps:
-      - name: Install Dependencies
+      # =============================
+      # 1. INSTALL ESSENTIALS & EPIC
+      # =============================
+      - name: Install Chocolatey Apps (Epic, Steam, Tailscale)
         run: |
-          sudo apt update
-          sudo apt install -y jq
-          pip install vastai
+          Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          choco install tailscale -y
+          choco install epicgameslauncher -y
+          choco install directx -y
+          choco install vcredist140 -y
+        shell: powershell
 
-      - name: Set API Key
+      # =============================
+      # 2. CONFIGURE MEMORY (32GB)
+      # =============================
+      - name: Configure 32GB Virtual RAM (Pagefile)
         run: |
-          vastai set api-key ${{ secrets.VAST_API_KEY }}
+          $sys = Get-WmiObject -Class Win32_ComputerSystem
+          $sys.AutomaticManagedPagefile = $false
+          $sys.Put()
+          
+          # Tenta configurar, mas em runners gratuitos o disco C: pode encher
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" `
+            -Name "PagingFiles" `
+            -Value "C:\pagefile.sys 32768 32768"
 
-      - name: Get RTX 4090 + 16 CPU
-        run: |
-          OFFER=$(vastai search offers "gpu_name=RTX_4090 cpu_cores>=16 rentable=True verified=True" --raw | jq -r 'sort_by(.dph_total) | .[0].id')
-          echo "OFFER_ID=$OFFER" >> $GITHUB_ENV
+          Write-Host "Configuração de Memória Virtual aplicada."
+        shell: powershell
 
-      - name: Create Windows 11 RTX Machine
+      # =============================
+      # 3. SETUP VIRTUAL DISK
+      # =============================
+      - name: Create Virtual Disk for UE5 Projects
         run: |
-          vastai create instance $OFFER_ID \
-            --image vastai/windows11 \
-            --disk 200
+          Import-Module Hyper-V
+          
+          # Nota: Em runners gratuitos, 512GB falhará. Ajuste para self-hosted se necessário.
+          # O script tentará criar o máximo possível se falhar o tamanho fixo.
+          $VHDPath = "C:\UE5_Projects.vhdx"
+          
+          # Criação do disco (Dinâmico para economizar espaço inicial)
+          New-VHD -Path $VHDPath -SizeBytes 512GB -Dynamic
+          Mount-VHD -Path $VHDPath
+          
+          $disk = Get-Disk | Where-Object PartitionStyle -Eq "RAW"
+          Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+          
+          New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter | 
+          Format-Volume -FileSystem NTFS -NewFileSystemLabel "UE5_Data" -Confirm:$false
+          
+          Write-Host "Disco de Projetos UE5 Criado e Montado."
+        shell: powershell
 
-      - name: Show Instance Info
+      # =============================
+      # 4. START TAILSCALE VPN
+      # =============================
+      - name: Start Tailscale
         run: |
-          vastai show instances
+          Start-Service Tailscale
+          # Certifique-se de ter o segredo TAILSCALE_AUTHKEY configurado no GitHub
+          tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
+          tailscale ip -4
+        shell: powershell
+
+      # =============================
+      # 5. ENABLE REMOTE DESKTOP
+      # =============================
+      - name: Enable RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name "fDenyTSConnections" -Value 0
+          
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          Write-Host "Acesso Remoto RDP Liberado."
+        shell: powershell
+
+      # =============================
+      # 6. CREATE USER (ADMIN)
+      # =============================
+      - name: Create UE5 Dev User
+        run: |
+          net user DevUE5 P@ssRTX4060! /add
+          net localgroup administrators DevUE5 /add
+          # Configura para a senha não expirar
+          WMIC USERACCOUNT WHERE Name='DevUE5' SET PasswordExpires=FALSE
+        shell: powershell
+
+      # =============================
+      # 7. SHOW CONNECTION INFO
+      # =============================
+      - name: Show Access Info
+        run: |
+          echo "========================================="
+          echo "   WORKSTATION UE5 / EPIC GAMES READY    "
+          echo "========================================="
+          echo "Usuario: DevUE5"
+          echo "Senha:   P@ssRTX4060!"
+          echo "-----------------------------------------"
+          echo "IP para conectar (Tailscale):"
+          tailscale ip -4
+          echo "========================================="
+        shell: powershell
+
+      # =============================
+      # 8. KEEP ALIVE LOOP
+      # =============================
+      - name: Keep Runner Alive
+        run: |
+          Write-Host "Máquina ativa. Conecte via RDP agora."
+          # Loop infinito de ping para manter a sessão ativa até o timeout (6h)
+          ping 127.0.0.1 -t
+        shell: powershell
