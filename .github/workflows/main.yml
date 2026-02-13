@@ -1,72 +1,35 @@
-name: UE5-Gamer-PC
+name: Windows-Remote-Desktop
 
-on:
-  workflow_dispatch:
+on: 
+  workflow_dispatch: # Permite que você inicie o processo manualmente
 
 jobs:
-  ue5-machine:
-    runs-on: windows-2022
-    timeout-minutes: 360
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360 # Tempo máximo de duração (6 horas)
 
     steps:
-
-    # =============================
-    # UPDATE SYSTEM
-    # =============================
-    - name: Update Windows
+    - name: Baixando e Configurando o Ngrok
       run: |
-        powershell -Command "Install-WindowsUpdate -AcceptAll -IgnoreReboot"
-      shell: powershell
+        Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+        Expand-Archive ngrok.zip
+        
+    - name: Autenticando no Ngrok
+      run: .\ngrok\ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+      # Você deve adicionar seu Token do Ngrok nos Secrets do repositório com o nome NGROK_AUTH_TOKEN
 
-    # =============================
-    # INSTALL CHOCOLATEY
-    # =============================
-    - name: Install Chocolatey
+    - name: Ativando Acesso RDP
       run: |
-        Set-ExecutionPolicy Bypass -Scope Process -Force;
-        [System.Net.ServicePointManager]::SecurityProtocol = 3072;
-        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-      shell: powershell
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
 
-    # =============================
-    # INSTALL REQUIRED PROGRAMS
-    # =============================
-    - name: Install Essentials
-      run: |
-        choco install googlechrome -y
-        choco install 7zip -y
-        choco install visualstudio2022buildtools -y
-        choco install vcredist-all -y
-      shell: powershell
+    - name: Criando Túnel Ngrok
+      run: Start-Process Powershell -ArgumentList '-NoExit -Command ".\ngrok\ngrok.exe tcp 3389"'
 
-    # =============================
-    # INSTALL NVIDIA DRIVER (SIMULADO)
-    # =============================
-    - name: NVIDIA Setup
+    - name: Mantendo a conexão viva
       run: |
-        echo "Configuring NVIDIA GPU environment..."
-      shell: powershell
-
-    # =============================
-    # ENABLE DIRECTX 12
-    # =============================
-    - name: Enable DirectX
-      run: |
-        dxdiag
-      shell: powershell
-
-    # =============================
-    # INSTALL EPIC GAMES LAUNCHER
-    # =============================
-    - name: Install Epic Games Launcher
-      run: |
-        choco install epicgameslauncher -y
-      shell: powershell
-
-    # =============================
-    # KEEP VM RUNNING
-    # =============================
-    - name: Keep Alive
-      run: |
-        Start-Sleep -Seconds 21600
-      shell: powershell
+        echo "Acesse seu painel do Ngrok para pegar o IP e Porta de conexão"
+        echo "Usuário: runneradmin"
+        echo "Senha: Use o comando 'net user runneradmin nova_senha' se precisar alterar"
+        sleep 21600 # Mantém rodando por 6 horas
