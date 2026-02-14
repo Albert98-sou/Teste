@@ -69,7 +69,7 @@ jobs:
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 20) {
-              Write-Host "Attempt $retries: Getting Tailscale IP..."
+              Write-Host "Attempt ${retries}: Getting Tailscale IP..."
               $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
               Start-Sleep -Seconds 5
               $retries++
