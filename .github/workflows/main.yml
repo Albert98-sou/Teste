@@ -1,52 +1,54 @@
-name: Windows-RDP-Tailscale-Auto-Creds
+name: PC-Gamer-32GB-Windows
 
-on: 
+on:
   workflow_dispatch:
 
 jobs:
-  build:
+  gamer-pc:
     runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-      - name: Instalando Tailscale
-        shell: powershell
-        run: |
-          Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe -OutFile tailscale-setup.exe
-          Start-Process -FilePath .\tailscale-setup.exe -ArgumentList "/S" -Wait
-          
-      - name: Conectando ao Tailscale
-        shell: powershell
-        run: |
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} --hostname "GitHub-Action-Runner"
 
-      - name: Gerar Credenciais e Configurar RDP
-        shell: powershell
+      # =============================
+      # INFO DO SISTEMA
+      # =============================
+      - name: Mostrar informações do PC
         run: |
-          # 1. Habilitar RDP
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          
-          # 2. Gerar uma senha aleatória segura
-          $Password = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 16 | % {[char]$_})
-          $User = "runneradmin"
-          
-          # 3. Definir a senha no sistema
-          net user $User $Password
-          
-          # 4. Obter o IP do Tailscale
-          $IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          
-          # 5. Exibir as credenciais no log (Formatado para fácil leitura)
-          Write-Host "========================================" -ForegroundColor Green
-          Write-Host "CREDENCIAIS DE ACESSO REMOTO:" -ForegroundColor Green
-          Write-Host "IP (Tailscale): $IP" -ForegroundColor Cyan
-          Write-Host "Username: $User" -ForegroundColor Cyan
-          Write-Host "Password: $Password" -ForegroundColor Cyan
-          Write-Host "========================================" -ForegroundColor Green
+          systeminfo
+          wmic cpu get name
+          wmic memorychip get capacity
+        shell: powershell
 
-      - name: Manter Ativo (6 horas)
-        shell: powershell
+      # =============================
+      # INSTALAR PROGRAMAS GAMER
+      # =============================
+      - name: Instalar Apps Gamer
         run: |
-          echo "A máquina está pronta. Consulte o passo acima para as credenciais."
-          sleep 21600
+          choco install steam -y
+          choco install epicgameslauncher -y
+          choco install 7zip -y
+        shell: powershell
+
+      # =============================
+      # CONFIGURAR MODO PERFORMANCE
+      # =============================
+      - name: Ativar Modo Alto Desempenho
+        run: |
+          powercfg -setactive SCHEME_MIN
+        shell: powershell
+
+      # =============================
+      # INSTALAR TAILSCALE (ACESSO REMOTO)
+      # =============================
+      - name: Instalar Tailscale
+        run: |
+          choco install tailscale -y
+        shell: powershell
+
+      # =============================
+      # FINAL
+      # =============================
+      - name: PC Gamer Pronto
+        run: |
+          echo "PC Gamer 32GB iniciado com sucesso!"
