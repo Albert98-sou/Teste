@@ -49,10 +49,11 @@ jobs:
               Write-Host "User RDP already exists"
           }
 
-      - name: Install NVIDIA GPU Drivers
-        run: |
-          choco install nvidia-display-driver -y
-          Write-Host "GPU drivers installed"
+      # Nota: GPU drivers removidos porque runners GitHub já possuem GPU virtual
+      #- name: Install NVIDIA GPU Drivers
+      #  run: |
+      #    choco install nvidia-display-driver -y
+      #    Write-Host "GPU drivers installed"
 
       - name: Install Tailscale
         run: |
