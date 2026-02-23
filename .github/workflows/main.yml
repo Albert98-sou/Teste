@@ -1,56 +1,35 @@
-name: RDP-Intel-32GB-1TB
-
-on:
-  workflow_dispatch: # Permite ligar o PC manualmente
+name: Windows Remote Desktop
+on: workflow_dispatch
 
 jobs:
-  rdp-session:
-    # Para 32GB reais, o GitHub exige runners específicos (ex: windows-2022-16core)
-    # Se usar o padrão abaixo, ele rodará com 7GB RAM / 2-Core Intel
-    runs-on: windows-latest 
-    timeout-minutes: 360 # Limite de 6 horas (máximo free)
-
+  build:
+    runs-on: windows-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Configure RDP Settings
+      - name: Baixar e Instalar Chrome Remote Desktop
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
-          Write-Host "Configurações de RDP aplicadas."
-
-      - name: Create Admin User
+          Invoke-WebRequest -Uri https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi -OutFile sudo-crd.msi
+          msiexec.exe /i sudo-crd.msi /qn
+          
+      - name: Configurar Registro (Hack para permitir Headless)
         run: |
-          $password = "SenhaForte123!" # Altere por segurança
-          $user = "AdminRDP"
-          net user $user $password /add
-          net localgroup Administrators $user /add
-          Write-Host "Usuário $user criado com sucesso."
+          # Garante que o serviço entenda que pode rodar sem monitor físico
+          New-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -PropertyType DWORD -Force
 
-      - name: Install Tailscale
+      - name: Iniciar Host Remoto
+        shell: cmd
         run: |
-          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          Invoke-WebRequest -Uri $url -OutFile "tailscale.msi"
-          Start-Process msiexec.exe -ArgumentList "/i", "tailscale.msi", "/quiet", "/norestart" -Wait
+          @echo off
+          echo COLE O COMANDO DE AUTENTICAÇÃO DO GOOGLE ABAIXO:
+          :: Vá em https://remotedesktop.google.com/headless
+          :: Copie o comando para WINDOWS (PowerShell/CMD) e cole aqui:
+          
+          <COLE_AQUI_O_COMANDO_DO_GOOGLE_REMOTE_DESKTOP> --pin=123456
 
-      - name: Connect to Tailscale
-        shell: pwsh
+      - name: Manter Ativo (6 horas)
         run: |
-          # Você PRECISA adicionar o segredo TAILSCALE_AUTH_KEY nas configurações do seu GitHub
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=pc-intel-32gb
-          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Host "--- CONEXÃO RDP LIBERADA ---"
-          Write-Host "Endereço IP: $ip"
-          Write-Host "Usuário: AdminRDP"
-          Write-Host "Senha: SenhaForte123!"
-          Write-Host "----------------------------"
-
-      - name: Keep Alive (6 Hours)
-        run: |
-          $startTime = Get-Date
-          while ((Get-Date) -lt $startTime.AddMinutes(350)) {
-            Write-Host "PC Ativo... [$(Get-Date)]"
-            Start-Sleep -Seconds 300
+          $val = 0
+          while($val -lt 360) {
+            Write-Host "Mantendo conexão viva... $val minutos"
+            Start-Sleep -Seconds 60
+            $val++
           }
