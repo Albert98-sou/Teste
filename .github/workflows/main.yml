@@ -1,33 +1,28 @@
-name: Windows OpenGL PC
+name: Remote Desktop Nvidia UE5
 on: workflow_dispatch
 
 jobs:
-  remote-pc:
-    runs-on: windows-latest
+  build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Instalar Chrome Remote Desktop
+      - name: Preparar Sistema e Drivers Nvidia
         run: |
-          $msiPath = "$($env:USERPROFILE)\desktop.msi"
-          Invoke-WebRequest -Uri https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi -OutFile $msiPath
-          Start-Process msiexec.exe -Wait -ArgumentList "/i $msiPath /qn"
+          sudo add-apt-repository ppa:graphics-drivers/ppa -y
+          sudo apt update
+          sudo apt install -y xfce4 xfce4-goodies nvidia-driver-535 libvulkan1 mesa-utils
+
+      - name: Instalar Chrome e Remote Desktop
+        run: |
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+          wget https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
+          sudo apt install -y ./chrome-remote-desktop_current_amd64.deb
+
+      - name: Configurar Sessão Desktop
+        run: |
+          sudo bash -c 'echo "exec /etc/X11/Xsession /usr/bin/xfce4-session" > /etc/chrome-remote-desktop-session'
+
+      - name: Autenticação
+        run: |
+          "%PROGRAMFILES(X86)%\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" --code="4/0AfrIepDOXdAZoGOEUZKrBZxGuSdXIWWcBR9NIsJIkEUD1NKlQm1RNcye-Lbf9qrHFsDEJg" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=%COMPUTERNAME%
           
-      - name: Configurar Suporte OpenGL (Mesa3D)
-        run: |
-          # Baixa o driver de software OpenGL para Windows
-          Invoke-WebRequest -Uri https://github.com/pal1000/mesa-dist-win/releases/download/23.1.9/mesa3d-23.1.9-release-msvc.7z -OutFile mesa.7z
-          # Nota: Você precisaria extrair a opengl32.dll para a pasta do seu app
-          # ou para C:\Windows\System32 (o que é mais complexo em runtime)
-          echo "Mesa3D baixado. Para usar OpenGL, coloque a opengl32.dll na pasta do seu programa."
-
-      - name: Iniciar Host Remoto
-        shell: cmd
-        run: |
-          :: COLANDO O SEU COMANDO ABAIXO
-          "%PROGRAMFILES(X86)%\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" --code="4/0AfrIepC4kdZCvd9dcJ5OP2yGQQJrkGRn1FnbbD4ajv75U8960u90HOTXeT3rpa4y5gRt6w" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=%COMPUTERNAME% --pin=123456
-
-      - name: Manter Conexão Viva
-        run: |
-          Write-Host "PC Pronto! Acesse em https://remotedesktop.google.com/access"
-          Write-Host "O PIN configurado é: 123456"
-          # Mantém rodando por 6 horas
-          Start-Sleep -Seconds 21600
