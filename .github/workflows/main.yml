@@ -1,35 +1,33 @@
-name: Windows Remote Desktop
+name: Windows OpenGL PC
 on: workflow_dispatch
 
 jobs:
-  build:
+  remote-pc:
     runs-on: windows-latest
     steps:
-      - name: Baixar e Instalar Chrome Remote Desktop
+      - name: Instalar Chrome Remote Desktop
         run: |
-          Invoke-WebRequest -Uri https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi -OutFile sudo-crd.msi
-          msiexec.exe /i sudo-crd.msi /qn
+          $msiPath = "$($env:USERPROFILE)\desktop.msi"
+          Invoke-WebRequest -Uri https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi -OutFile $msiPath
+          Start-Process msiexec.exe -Wait -ArgumentList "/i $msiPath /qn"
           
-      - name: Configurar Registro (Hack para permitir Headless)
+      - name: Configurar Suporte OpenGL (Mesa3D)
         run: |
-          # Garante que o serviço entenda que pode rodar sem monitor físico
-          New-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -PropertyType DWORD -Force
+          # Baixa o driver de software OpenGL para Windows
+          Invoke-WebRequest -Uri https://github.com/pal1000/mesa-dist-win/releases/download/23.1.9/mesa3d-23.1.9-release-msvc.7z -OutFile mesa.7z
+          # Nota: Você precisaria extrair a opengl32.dll para a pasta do seu app
+          # ou para C:\Windows\System32 (o que é mais complexo em runtime)
+          echo "Mesa3D baixado. Para usar OpenGL, coloque a opengl32.dll na pasta do seu programa."
 
       - name: Iniciar Host Remoto
         shell: cmd
         run: |
-          @echo off
-          echo COLE O COMANDO DE AUTENTICAÇÃO DO GOOGLE ABAIXO:
-          :: Vá em https://remotedesktop.google.com/headless
-          :: Copie o comando para WINDOWS (PowerShell/CMD) e cole aqui:
-          
-          <COLE_AQUI_O_COMANDO_DO_GOOGLE_REMOTE_DESKTOP> --pin=123456
+          :: COLANDO O SEU COMANDO ABAIXO
+          "%PROGRAMFILES(X86)%\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" --code="4/0AfrIepC4kdZCvd9dcJ5OP2yGQQJrkGRn1FnbbD4ajv75U8960u90HOTXeT3rpa4y5gRt6w" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=%COMPUTERNAME% --pin=123456
 
-      - name: Manter Ativo (6 horas)
+      - name: Manter Conexão Viva
         run: |
-          $val = 0
-          while($val -lt 360) {
-            Write-Host "Mantendo conexão viva... $val minutos"
-            Start-Sleep -Seconds 60
-            $val++
-          }
+          Write-Host "PC Pronto! Acesse em https://remotedesktop.google.com/access"
+          Write-Host "O PIN configurado é: 123456"
+          # Mantém rodando por 6 horas
+          Start-Sleep -Seconds 21600
