@@ -5,68 +5,63 @@ on:
 
 jobs:
   secure-rdp:
-    # NOTA: 'windows-2022-32core' é um exemplo de Large Runner. 
-    # Se estiver no plano gratuito, use 'windows-latest' (mas terá apenas 7GB RAM).
+    # IMPORTANTE: Se você tiver um runner próprio, mude para: runs-on: self-hosted
+    # Para usar os servidores potentes do GitHub (pagos), use: runs-on: windows-2022-32core
     runs-on: windows-latest 
     timeout-minutes: 3600
 
     steps:
-      - name: Maximize Disk Space (Limpeza Profunda)
+      - name: Liberar Espaço em Disco (Max 1024GB Attempt)
         run: |
-          Write-Host "Limpando caches para ganhar espaço..."
+          Write-Host "Limpando caches pesados do Windows para expandir armazenamento..."
+          # Remove SDKs de Android, .NET e caches que ocupam ~30GB
           rm -rf "C:\hostedtoolcache"
-          rm -rf "C:\Program Files\dotnet"
           rm -rf "C:\Program Files\Android"
-          Write-Host "Espaço liberado!"
+          rm -rf "C:\Program Files\dotnet"
+          Write-Host "Limpeza concluída."
 
       - name: Configure Core RDP Settings
         run: |
-          # Habilitar RDP e configurar segurança via Registro (Sintaxe Corrigida)
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-
-          # Firewall (Inglês)
+          
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-          
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User
+      - name: Create RDP User (32GB RAM Optimized)
         run: |
-          $password = "UnrealEngine5_2026!" # Senha forte definida manualmente para facilitar
+          $password = "UE5_Workstation_2026!" # Senha fixa para evitar erros de log
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "RDP_Admin" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP_Admin"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP_Admin"
           echo "PASS=$password" >> $env:GITHUB_ENV
 
       - name: Install Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile "ts.msi"
-          Start-Process msiexec.exe -ArgumentList "/i", "ts.msi", "/quiet", "/norestart" -Wait
+          Invoke-WebRequest -Uri $tsUrl -OutFile "tailscale.msi"
+          Start-Process msiexec.exe -ArgumentList "/i", "tailscale.msi", "/quiet", "/norestart" -Wait
 
-      - name: Connect Tailscale
+      - name: Establish Tailscale Connection
         run: |
-          # Use seu Secret TAILSCALE_AUTH_KEY aqui
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=ue5-workstation
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=ue5-machine
           $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          echo "TS_IP=$tsIP" >> $env:GITHUB_ENV
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: hardware Check (UE5 Readiness)
+      - name: Verify Hardware (RAM & Disk)
         run: |
-          Write-Host "--- CPU INFO ---"
-          Get-WmiObject Win32_Processor | Select-Object Name, NumberOfCores, MaxClockSpeed
-          Write-Host "--- RAM INFO ---"
-          Get-WmiObject Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory
-          Write-Host "--- DISK INFO ---"
+          Write-Host "--- Verificando Recursos do Sistema ---"
+          Get-WmiObject Win32_OperatingSystem | Select-Object @{Name="RAM_Livre_GB";Expression={$_.FreePhysicalMemory / 1MB}}, @{Name="RAM_Total_GB";Expression={$_.TotalVisibleMemorySize / 1MB}}
           Get-PSDrive C | Select-Object Used, Free
+          Write-Host "--- CPU ---"
+          Get-WmiObject Win32_Processor | Select-Object Name, NumberOfCores
 
-      - name: Keep Alive
+      - name: Maintain Connection
         run: |
-          Write-Host "=== CONEXÃO RDP LIBERADA ==="
-          Write-Host "IP: $env:TS_IP"
+          Write-Host "`n=== RDP READY ==="
+          Write-Host "IP: $env:TAILSCALE_IP"
           Write-Host "User: RDP_Admin"
           Write-Host "Pass: $env:PASS"
-          while($true) { Start-Sleep -Seconds 300 }
+          while ($true) { Start-Sleep -Seconds 300 }
